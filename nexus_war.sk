@@ -1,0 +1,296 @@
+#API読み込み
+import:
+    com.palmergames.bukkit.towny.TownyAPI
+    com.palmergames.bukkit.towny.Towny
+    com.palmergames.bukkit.towny.event.actions.TownyActionEvent
+    com.palmergames.bukkit.towny.event.actions.TownyBuildEvent
+    com.palmergames.bukkit.towny.event.actions.TownyBurnEvent
+    com.palmergames.bukkit.towny.event.actions.TownyDestroyEvent
+    com.palmergames.bukkit.towny.event.actions.TownyExplodingBlocksEvent
+    com.palmergames.bukkit.towny.event.actions.TownyItemuseEvent
+    com.palmergames.bukkit.towny.event.actions.TownySwitchEvent
+    com.palmergames.bukkit.towny.event.damage.TownBlockPVPTestEvent
+    com.palmergames.bukkit.towny.event.damage.TownyExplosionDamagesEntityEvent
+    java.util.ArrayList
+    java.util.List
+    org.bukkit.Material
+    org.bukkit.block.Block
+    org.bukkit.event.EventHandler
+    org.bukkit.event.Listener
+#設定
+options:
+    prefix: "&8[&3Nexus War&8]"
+    preparation_phase_times: 600
+#宣戦布告に用いるコマンド
+command /declaration <text>:
+    aliases: dc
+    trigger:
+        #戦争が実行可能な時間帯かを確認
+        if sessiontime() is true:
+            #街があるの確認
+            if TownyAPI.getInstance().getTown("%arg-1%"):
+                #既に戦争が始まってるかの確認
+                if {war_progress} is false:
+                    if arg-1 is not "%TownyAPI.getInstance().getTown(player)%":
+                        #戦争を行ってる判定にする
+                        set {war_progress} to true
+                        #プレイヤーがどの国に属してるかを確認
+                        set {_player_town} to TownyAPI.getInstance().getTown(player)
+                        set {attacker_town} to {_player_town}
+                        set {defence_town} to TownyAPI.getInstance().getTown("%arg-1%")
+                        if TownyAPI.getInstance().getTown(player).getNation():
+                        set {attacker_nation} to TownyAPI.getInstance().getTown(player).getNation()
+                        #Homeblockの座標取得&ネクサス設置
+                        set {_nexus_potion_x} to TownyAPI.getInstance().getTown("%arg-1%").getHomeBlock().getX()
+                        set {_nexus_potion_z} to TownyAPI.getInstance().getTown("%arg-1%").getHomeBlock().getZ()
+                        set {_nexus_potion_x} to ({_nexus_potion_x} * 16) + 1
+                        set {_nexus_potion_z} to ({_nexus_potion_z} * 16) + 1
+                        set block at location at {_nexus_potion_x}, 80, {_nexus_potion_z} in world "earth" to end_stone
+                        execute console command "minecraft:execute in minecraft:earth run summon wither_skull %{_nexus_potion_x}% 80.3 %{_nexus_potion_z}% %{glowing_skull_nbt}%"
+                        set {global_nexus_potion_x} to {_nexus_potion_x}
+                        set {global_nexus_potion_z} to {_nexus_potion_z}
+                        #宣戦布告の全体通知
+                        play sound "block.note_block.pling" with volume 1 with pitch 1 at player
+                        broadcast "%{@prefix}% &c%{_player_town}%が%arg-1%に対して宣戦布告を行いました！"
+                        broadcast "%{@prefix}% &c準備フェーズが始まります！"
+                        #準備フェーズの開始処理
+                        set {preparation_phase} to true
+                        set {preparation_phase.times} to {@preparation_phase_times}
+                        set {preparation_phase_bar} to 0
+            else:
+                send "%{@prefix}% &c指定された国は存在してません"
+        else:
+            send "%{@prefix}% &c戦争が可能な時間ではありません"
+#ネクサス破壊関連
+on break:
+    if {war_progress} is true:
+        if {war_phase} is true:
+            if event-block is end_stone:
+                set {_x.%player%} to event-block's x-coord
+                set {_y.%player%} to event-block's y-coord
+                set {_z.%player%} to event-block's z-coord
+                send "%{_y.%player%}%" to player
+                if {_x.%player%} < 0:
+                    add -1 to {_x.%player%}
+                if {_z.%player%} < 0:
+                    add -1 to {_z.%player%}
+                set {_x1.%player%::*} to "%{_x.%player%}%" split at "."
+                set {_y1.%player%::*} to "%{_y.%player%}%" split at "."
+                set {_z1.%player%::*} to "%{_z.%player%}%" split at "."
+                if {_x1.%player%::1} is "%{global_nexus_potion_x}%":
+                    if {_z1.%player%::1} is "%{global_nexus_potion_z}%":
+                        if {_y1.%player%::1} is "80":
+                            if {attacker_nation} is TownyAPI.getInstance().getTown(player).getNation():
+                                broadcast "%{@prefix}% &c%player%がネクサスを破壊しています！&8(&c残りHP: %{nexus_hp}%&8)"
+                                remove 1 from {nexus_hp}
+                                play sound "block.anvil.land" with volume 3 with pitch 1 at player
+                                if {nexus_hp} <= 0:
+                                    broadcast "%{@prefix}% &cネクサスのHPが0になり%{attacker_town}%が勝利しました"
+                                    execute console command "ta town %{defence_town}% delete"
+                                    execute console command "confirm"
+                                    set {war_progress} to false
+                                    set {preparation_phase} to false
+                                    set {preparation_phase.times} to -1
+                                    set {war_phase} to false
+                                    set {nexus_hp} to 0
+                                    set {preparation_phase_bar} to 0
+                                    execute console command "minecraft:kill @e[tag=nexus]"
+                                    execute console command "ta town %{defence_town}% toggle forcepvp off"
+                                    remove bossbar "war_phase_bar"
+                                cancel event
+                            else:
+                                if {attacker_town} is TownyAPI.getInstance().getTown(player):
+                                    broadcast "%{@prefix}% &c%player%がネクサスを破壊しています！&8(&c残りHP: %{nexus_hp}%&8)"
+                                    remove 1 from {nexus_hp}
+                                    play sound "block.anvil.land" with volume 3 with pitch 1 at player
+                                    if {nexus_hp} <= 0:
+                                        broadcast "%{@prefix}% &cネクサスのHPが0になり%{attacker_town}%が勝利しました"
+                                        execute console command "ta town %{defence_town}% delete"
+                                        execute console command "confirm"
+                                        set {war_progress} to false
+                                        set {preparation_phase} to false
+                                        set {preparation_phase.times} to -1
+                                        set {war_phase} to false
+                                        set {nexus_hp} to 0
+                                        set {preparation_phase_bar} to 0
+                                        execute console command "minecraft:kill @e[tag=nexus]"
+                                        execute console command "ta town %{defence_town}% toggle forcepvp off"
+                                        loop all players:
+                                            remove bossbar "nexus_war_bar.%loop-player%"
+                                    cancel event
+                                else:
+                                    cancel event
+#ネクサスに関するグリッチ防止
+on explode:
+    loop exploded blocks:
+        if {war_progress} is true:
+            if {war_phase} is true:
+                if loop-block is end_stone:
+                    set {_x} to loop-block's x-coord
+                    set {_y} to loop-block's y-coord
+                    set {_z} to loop-block's z-coord
+                    if {_x} < 0:
+                        add -1 to {_x}
+                    if {_z} < 0:
+                        add -1 to {_z}
+                    set {_x1::*} to "%{_x}%" split at "."
+                    set {_y1::*} to "%{_y}%" split at "."
+                    set {_z1::*} to "%{_z}%" split at "."
+                    if {_x1::1} is "%{global_nexus_potion_x}%":
+                        if {_z1::1} is "%{global_nexus_potion_z}%":
+                            if {_y1::1} is "80":
+                                cancel event
+
+on piston extend:
+    if {war_progress} is true:
+        if {war_phase} is true:
+            if event-block is end_stone:
+                set {_x} to event-block's x-coord
+                set {_y} to event-block's y-coord
+                set {_z} to event-block's z-coord
+                if {_x} < 0:
+                    add -1 to {_x}
+                if {_z} < 0:
+                    add -1 to {_z}
+                set {_x1::*} to "%{_x}%" split at "."
+                set {_y1::*} to "%{_y}%" split at "."
+                set {_z1::*} to "%{_z}%" split at "."
+                if {_x1::1} is "%{global_nexus_potion_x}%":
+                    if {_z1::1} is "%{global_nexus_potion_z}%":
+                        if {_y1::1} is "80":
+                            cancel event
+
+    
+#準備フェーズ
+every seconds:
+    #既に戦争が始まってるかの確認
+    if {war_progress} is true:
+        #準備フェーズであることの確認
+        if {preparation_phase} is true:
+            if {preparation_phase.times} is 0:
+                broadcast "%{@prefix}% &c準備フェーズが終了し戦争フェーズが始まります！"
+                #準備フェーズ変数をfalseにネクサスHPを設定
+                set {preparation_phase_bar} to 0
+                set {preparation_phase} to false
+                set {war_phase} to true
+                set {war_phase.times} to 120
+                set {nexus_hp} to 100
+                remove bossbar "preparation_phase_bar"
+                execute console command "ta town %{defence_town}% toggle forcepvp on"
+            #{preparation_phase.times}を1秒ずつ減らす
+            remove 1 from {preparation_phase.times}
+#戦争フェーズ時の爆発を有効するコード(作り直す予定)
+every seconds:
+    if {war_progress} is true:
+        #戦争フェーズであることの確認
+        if {war_phase} is true:
+            if TownyAPI.getInstance().getTown("%{defence_town}%").isExplosion() is false:
+                execute console command "ta town %{defence_town}% toggle Explosion on"
+#戦争の引き分け時の処理
+every minute:
+    #既に戦争が始まってるかの確認
+    if {war_progress} is true:
+        #戦争フェーズであることの確認
+        if {war_phase} is true:
+            if {war_phase.times} is 0:
+                broadcast "%{@prefix}% &c%{defence_town}%が制限時間までネクサスを守り切りました！"
+                set {war_progress} to false
+                set {preparation_phase} to false
+                set {preparation_phase.times} to -1
+                set {war_phase} to false
+                set {nexus_hp} to 0
+                set {preparation_phase_bar} to 0
+                execute console command "minecraft:kill @e[tag=nexus]"
+                execute console command "ta town %{defence_town}% toggle Explosion off"
+                execute console command "ta town %{defence_town}% toggle forcepvp off"
+                loop all players:
+                    remove bossbar "nexus_war_bar.%loop-player%"
+            remove 1 from {war_phase.times}
+#準備フェーズ時のボスバー
+every seconds:
+    #既に戦争が始まってるかの確認
+    if {war_progress} is true:
+        #準備フェーズであることの確認
+        if {preparation_phase} is true:
+            loop all players:
+                create bossbar titled "%{@prefix}% 準備フェーズ: &c%{preparation_phase.times}%" and id "nexus_war_bar.%loop-player%" for loop-player with progress 100 with colors red        
+#戦争フェーズ時のボスバー
+every seconds:
+    #既に戦争が始まってるかの確認
+    if {war_progress} is true:
+        #戦争フェーズであることの確認
+        if {war_phase} is true:
+            loop all players:
+                create bossbar titled "%{@prefix}% &cネクサスのHP&8: &c%{nexus_hp}% &8残り時間: &c%{war_phase.times}%&8分" and id "nexus_war_bar.%loop-player%" for loop-player with progress 100 with colors red
+#ブロック設置を有効にするコード
+on TownyBuildEvent:
+    #既に戦争が始まってるかの確認
+    if {war_progress} is true:
+        #戦争フェーズであることの確認
+        if {war_phase} is true:
+            if TownyAPI.getInstance().isWilderness(event.getBlock().getLocation()) is false:
+                set {_town} to TownyAPI.getInstance().getTownBlock(event.getBlock().getLocation()).getTown()
+                if {_town} is {defence_town}:
+                    event.setCancelled(false)
+#ブロック破壊を有効にするコード
+on TownyDestroyEvent:
+    #既に戦争が始まってるかの確認
+    if {war_progress} is true:
+        #戦争フェーズであることの確認
+        if {war_phase} is true:
+            if TownyAPI.getInstance().isWilderness(event.getBlock().getLocation()) is false:
+                set {_town} to TownyAPI.getInstance().getTownBlock(event.getBlock().getLocation()).getTown()
+                if {_town} is {defence_town}:
+                    event.setCancelled(false)
+#ブロックに対するインタラクトを有効にするコード
+on TownySwitchEvent:
+    #既に戦争が始まってるかの確認
+    if {war_progress} is true:
+        #戦争フェーズであることの確認
+        if {war_phase} is true:
+            if TownyAPI.getInstance().isWilderness(event.getBlock().getLocation()) is false:
+                set {_town} to TownyAPI.getInstance().getTownBlock(event.getBlock().getLocation()).getTown()
+                if {_town} is {defence_town}:
+                    event.setCancelled(false)
+#宣戦布告が可能な時間帯がどうかを確認するコード
+function sessiontime() :: boolean:
+    set {_time} to now formatted as "HH"
+    if {_time} is "10":
+        set {_return} to true
+    if {_time} is "11":
+        set {_return} to true
+    if {_time} is "12":
+        set {_return} to true
+    if {_return} is true:
+        return true
+#debug用のコマンド等
+command /debug_reset:
+    permission: skript.admin
+    trigger:
+        set {war_progress} to false
+        set {preparation_phase} to false
+        set {preparation_phase.times} to -1
+        set {war_phase} to false
+        set {nexus_hp} to 0
+        set {preparation_phase_bar} to 0
+        execute console command "minecraft:kill @e[tag=nexus]"
+        execute console command "ta town %{defence_town}% toggle Explosion off"
+        execute console command "ta town %{defence_town}% toggle forcepvp off"
+        loop all players:
+            remove bossbar "nexus_war_bar.%loop-player%"
+
+command /debug_3:
+    permission: skript.admin
+    trigger:
+        set {preparation_phase.times} to 10
+
+command /debug_4:
+    permission: skript.admin
+    trigger:
+        broadcast "%{global_nexus_potion_x}% %{global_nexus_potion_z}%"
+        execute console command "minecraft:execute in minecraft:earth run summon wither_skull %{global_nexus_potion_x}% 80.3 %{global_nexus_potion_z}% %{glowing_skull_nbt}%"
+
+command /debug_5 <text>:
+    permission: skript.admin
+    trigger:
+        set {glowing_skull_nbt} to arg-1
