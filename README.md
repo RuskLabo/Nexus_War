@@ -1,0 +1,2 @@
+# Nexus_War
+Skript上で動作するTownyの戦争システムです
