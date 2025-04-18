@@ -3,6 +3,9 @@ Skript上で動作するTownyの戦争システムです
 
 サポートしているバージョン: **1.21.4~**
 
+## 注意
+{glowing_skull_nbt} 変数に ``` {Glowing:1b,Invulnerable:1b,NoAI:1b,NoGravity:1b,Tags:["nexus"]} ``` を入れてください
+
 ## 前提プラグイン
 - [Towny](https://github.com/TownyAdvanced/Towny)
 - [Skript](https://github.com/SkriptLang/Skript)
